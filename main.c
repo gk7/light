@@ -30,6 +30,7 @@ LBOOL q; /* Quiet, supresses output */
 LBOOL c; /* print unprecise current value in percentage */
 LBOOL m; /* read max value*/
 LBOOL p; /* precision read current value */
+LBOOL f; /* force-use a controller */
 int wbright;
 LOPTYPE ot;
 
@@ -84,7 +85,8 @@ typedef struct {
 	char*		cb_path; /* Current brightness-path */
 	char*		mb_path; /* Max brightness-path */
 	char*		b_path; /* Brightness-path */
-	enum LBOOL		is_ok;
+	enum LBOOL	is_ok;
+	unsigned int	guide_id;
 } controller;
 
 typedef struct {
@@ -92,6 +94,14 @@ typedef struct {
 	unsigned int	num_controllers;
 } fetch_result;
 
+
+char* getinput(unsigned int size){
+	char* returner;
+	
+	
+	
+	return returner;
+}
 
 fetch_result fetch_controllers(const char* ctrldir){
 	fetch_result returner;
@@ -197,8 +207,73 @@ controller* get_best_controller(fetch_result* res){
 	return returner;
 }
 
+controller* get_controller_by_name(fetch_result* res, const char* name){
+	unsigned int it;
+	controller* returner;
+	
+	it = 0;
+	returner = NULL;
+	
+	while(it < res->num_controllers){
+		if(strcmp(res->controllers[it].name, name) == 0){
+			returner = &res->controllers[it];
+		}
+		it++;
+	}
+	
+	return returner;
+		
+}
+
 void usage(){
-	printf("Usage: light [-qcaspm] <value>\n\n\t-q:\t Run quiet, supresses output.\n\t-c:\t Prints the current brightness in percent and exits.(Not precise)\n\t-p:\t Prints the current brightness directly from controller and exits. (Precise)\n\t-m:\t Prints the max brightness directly from controller and exits. \n\t-a:\t Add the value instead of setting it.\n\t-s:\t Subtract the value instead of setting it.\n\n\t<value>\t Brightness wanted in percent.\n\n");
+	printf("Usage: light [-qcaspmfh] [--options] <value>\n\n\tFlags:\n\t-q:\t Run quiet, supresses output.\n\t-c:\t Prints the current brightness in percent and exits.(Not precise)\n\t-p:\t Prints the current brightness directly from controller and exits. (Precise)\n\t-m:\t Prints the max brightness directly from controller and exits. \n\t-a:\t Add the value instead of setting it.\n\t-s:\t Subtract the value instead of setting it.\n\t-f:\t Configure light to override which controller to use.(No other args)\n\t-h:\t Shows this help and exits.\n");
+	printf("\n\tOptions:\n\t--help:\t Shows this help and exits.\n\n\t<value>\t Brightness wanted in percent.\n\n");
+}
+
+void forceguide(){
+	fetch_result res;
+	unsigned int it;
+	unsigned int git;
+	unsigned int wanted;
+	char sure;
+	
+	printf("Light will now list all available controllers, prepended by a number..\n\n");
+	res = fetch_controllers("/sys/class/backlight");
+	it = 0;
+	git = 1;
+	while(it < res.num_controllers){
+		if(res.controllers[it].is_ok == TRUE){
+			res.controllers[it].guide_id = git;
+			git++;
+			
+			printf("%u:\t%s.\n", res.controllers[it].guide_id, res.controllers[it].name);
+		}
+		it++;
+	}
+	
+	if(git == 1){
+		printf("No OK controllers found, check your permissions/system.\n");
+		return;
+	}
+	
+	wanted = 0;
+	
+	while(wanted > (git -1) || wanted < 1){
+		printf("\nSelect which one you would like to use: ");
+		scanf("%u", &wanted);
+		printf("\n You entered \"%u\"",wanted);
+		
+	}
+	
+	printf("\nLight will now attempt to write the file \"/etc/light/override\", are you sure? (y/n) ");
+	scanf(" %c", &sure);
+	
+	if(sure != 'y'){
+		printf("\nAborting!\n");
+		return;
+	}
+	
+	
 }
 
 int main(int argc, char **argv) {
@@ -224,6 +299,7 @@ int main(int argc, char **argv) {
 	c=FALSE;
 	m=FALSE;
 	p=FALSE;
+	f=FALSE;
 	ot=SET;
 	wbright=0;
 	argsit = 1;
@@ -231,31 +307,61 @@ int main(int argc, char **argv) {
 	while(argsit < argc){
 		char* carg = argv[argsit];
 		if(carg[0] == '-'){
-			unsigned int cargit = 1;
-			while(cargit < strlen(carg)){
-				switch(carg[cargit]){
-					case 'q':
-						q = TRUE;
-					break;
-					case 'a':
-						ot = ADD;
-					break;
-					case 's':
-						ot = SUB;
-					break;
-					case 'c':
-						c = TRUE;
-					break;
-					case 'p':
-						p = TRUE;
-					break;
-					case 'm':
-						m = TRUE;
-					break;
-					default:
-					break;
+			LBOOL argdone;
+			argdone = FALSE;
+			if(strlen(carg) > 2){
+				if(carg[1] == '-'){
+					int longargs = strlen(carg) -2;
+					char *longarg = (char*) malloc(longargs);
+					strncpy(longarg, carg+2, longargs);
+					
+					if(strcmp(longarg, "help") == 0){
+						usage();
+						return 0;
+					}else{
+						printf("Unknown option: \"%s\".\n", longarg);
+						return 0;
+					}
+					argdone = TRUE;
 				}
-				cargit++;
+			}
+			
+			if(argdone == FALSE){
+				unsigned int cargit = 1;
+				while(cargit < strlen(carg)){
+					switch(carg[cargit]){
+						case 'q':
+							q = TRUE;
+						break;
+						case 'a':
+							ot = ADD;
+						break;
+						case 's':
+							ot = SUB;
+						break;
+						case 'c':
+							c = TRUE;
+						break;
+						case 'p':
+							p = TRUE;
+						break;
+						case 'm':
+							m = TRUE;
+						break;
+						case 'f':
+							f = TRUE;
+						break;
+						case 'h':
+							usage();
+							return 0;
+						break;
+						default:
+							printf("Unknown flag: %c\n", carg[cargit]);
+							return 1;
+						break;
+					}
+					cargit++;
+				}
 			}
 		}else{
 			wbright = atoi(carg);
@@ -263,6 +369,11 @@ int main(int argc, char **argv) {
 		}
 		
 		argsit++;
+	}
+	
+	if(f == TRUE){
+		forceguide();
+		return 0;
 	}
 	
 	if(c == TRUE || m == TRUE || p == TRUE){
@@ -345,6 +456,8 @@ int main(int argc, char **argv) {
 		return 0;
 	}
 	
+	minlight_nonp = best_ctrl->max_brightness * ( (float)minlight / 100) + 1;
+	
 	switch(ot){
 		case SET:
 			real_wbright = best_ctrl->max_brightness * ( (float)wbright / 100 );
@@ -353,20 +466,24 @@ int main(int argc, char **argv) {
 			real_wbright = ( best_ctrl->max_brightness * ( (float)( curr_brightp + wbright +1) / 100 ));
 		break;
 		case SUB:
-			real_wbright = ( best_ctrl->max_brightness * ( (float)( curr_brightp - wbright + 1) / 100 ));
+			if(curr_brightp <= wbright){
+				real_wbright = minlight_nonp;
+			}else{
+				real_wbright = ( best_ctrl->max_brightness * ( (float)( curr_brightp - wbright + 1) / 100 ));
+			}
 		break;
 		default:
 		break;
 	}
 	
-	minlight_nonp = best_ctrl->max_brightness * ( (float)minlight / 100);
 
-	/* FIXME 
+
+	/* FIXME<- SHOULD BE FIXED NOW, LETS STAY HERE ANYWAY JUST IN CASE 
 		Line below makes sure the value never wraps around and gets higher. Puts a (high) limit on max brightness.
 		Not sure if safe for portabilities sake.
-	 */
+	 
 	if(real_wbright > ((UINT_MAX/2) - best_ctrl->max_brightness)){ real_wbright = minlight_nonp; } 
-	
+	*/
 	
 	
 	if(real_wbright > best_ctrl->max_brightness){real_wbright = best_ctrl->max_brightness;}
